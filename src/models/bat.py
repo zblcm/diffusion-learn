@@ -125,6 +125,10 @@ class BottleneckBlock(nn.Module):
         # 可学习的 bottleneck latent 向量
         self.latent = nn.Parameter(torch.randn(1, latent_len, latent_dim) * 0.02)
 
+        init_weights(self)
+        # 重新初始化 latent (init_weights 会覆盖)
+        nn.init.trunc_normal_(self.latent, std=0.02)
+
     def forward(self, x, cond):
         B = x.shape[0]
 
@@ -201,8 +205,6 @@ class BAT(nn.Module):
         self.output_proj = nn.Linear(input_dim, in_channels)
 
         init_weights(self)
-        # 重新初始化 latent (init_weights 会覆盖)
-        nn.init.trunc_normal_(self.latent, std=0.02)
 
     def forward(self, x, t):
         """
