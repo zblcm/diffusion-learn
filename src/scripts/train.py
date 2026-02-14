@@ -2,18 +2,25 @@
 训练/测试脚本.
 
 功能:
-- 训练 ZiT 模型进行 flow matching
+- 从 JSON 配置文件读取训练参数和模型配置
+- 通过工厂函数创建 ZiT 或 BAT 模型
+- 在 output 目录下创建与配置文件同名的子文件夹, 所有输出放在其中
 - 每个 epoch 结束后计算 train/test loss
 - 每个 epoch 结束后采样 16 张图片拼成一张保存
-- 每 5 个 epoch 保存一次模型
+- 每 25 个 epoch 保存一次模型
 - 每个 epoch 更新 last.model 和 best.model
 - 支持断点继续训练
 - TensorBoard 可视化
+
+用法:
+    python src/scripts/train.py configs/zit_default.json
+    python src/scripts/train.py configs/bat_default.json
 """
 
 import os
 import sys
 import json
+import shutil
 import argparse
 import torch
 import torch.optim as optim
@@ -21,9 +28,9 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid, save_image
 
 # 添加 src 目录到路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from model import create_model
+from config import TrainConfig, create_model
 from sampler import FlowMatchingSampler
 from dataloader import create_dataloaders
 
@@ -89,10 +96,10 @@ def test_one_epoch(model, test_loader, device):
     return total_loss / max(num_batches, 1)
 
 
-def sample_images(model, sampler, device, num_images=16):
-    """采样生成图片, 返回 (num_images, 3, 64, 64) tensor."""
+def sample_images(model, sampler, device, img_size, in_channels, num_images=16):
+    """采样生成图片, 返回 (num_images, C, H, W) tensor."""
     model.eval()
-    shape = (num_images, 3, 64, 64)
+    shape = (num_images, in_channels, img_size, img_size)
     images = sampler.sample(model, shape, device)
     # clamp 到 [-1, 1] 然后映射到 [0, 1]
     images = torch.clamp(images, -1, 1)
@@ -101,61 +108,68 @@ def sample_images(model, sampler, device, num_images=16):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train ZiT for car image generation")
-    parser.add_argument("--data_dir", type=str, default="dataset/train", help="数据集路径")
-    parser.add_argument("--test_dir", type=str, default="dataset/test", help="数据集路径")
-    parser.add_argument("--output_dir", type=str, default="output", help="输出路径")
-    parser.add_argument("--epochs", type=int, default=500, help="训练轮数")
-    parser.add_argument("--batch_size", type=int, default=32, help="批大小")
-    parser.add_argument("--lr", type=float, default=1e-4, help="学习率")
-    parser.add_argument("--num_workers", type=int, default=4, help="数据加载线程数")
-    parser.add_argument("--sample_steps", type=int, default=50, help="采样步数")
-    parser.add_argument("--resume", action="store_true", help="从 last.model 继续训练")
+    parser = argparse.ArgumentParser(description="Train model for image generation")
+    parser.add_argument("config", type=str, help="JSON 配置文件路径")
     args = parser.parse_args()
+
+    # ---- 读取配置 ----
+    config_path = args.config
+    config_name = os.path.splitext(os.path.basename(config_path))[0]
+    with open(config_path, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+    cfg = TrainConfig(**raw)
+    print(f"Config: {config_path} ({config_name})")
+    print(f"Model type: {cfg.model.model_type}")
 
     # 设备
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # 输出目录
-    images_dir = os.path.join(args.output_dir, "images")
-    errors_dir = os.path.join(args.output_dir, "errors")
-    models_dir = os.path.join(args.output_dir, "models")
-    tb_dir = os.path.join(args.output_dir, "tensorboard")
+    # ---- 输出目录: output_dir / config_name / ... ----
+    run_dir = os.path.join(cfg.output_dir, config_name)
+    images_dir = os.path.join(run_dir, "images")
+    errors_dir = os.path.join(run_dir, "errors")
+    models_dir = os.path.join(run_dir, "models")
+    tb_dir = os.path.join(run_dir, "tensorboard")
     os.makedirs(images_dir, exist_ok=True)
     os.makedirs(errors_dir, exist_ok=True)
     os.makedirs(models_dir, exist_ok=True)
     os.makedirs(tb_dir, exist_ok=True)
 
-    # 数据加载
+    # 拷贝配置文件到输出目录
+    dst_config = os.path.join(run_dir, os.path.basename(config_path))
+    shutil.copy2(config_path, dst_config)
+    print(f"Config copied to {dst_config}")
+
+    # ---- 数据加载 ----
     print("Loading dataset...")
     train_loader, test_loader = create_dataloaders(
-        args.data_dir,
-        args.test_dir,
-        img_size=64,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
+        cfg.train_dir,
+        cfg.test_dir,
+        img_size=cfg.model.img_size,
+        batch_size=cfg.batch_size,
+        num_workers=cfg.num_workers,
     )
     print(f"Train batches: {len(train_loader)}, Test batches: {len(test_loader)}")
 
-    # 模型
-    model = create_model(device)
+    # ---- 模型 ----
+    model = create_model(cfg.model, device)
     num_params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {num_params:,}")
 
     # 优化器
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
+    optimizer = optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=0.01)
 
     # 采样器
-    sampler = FlowMatchingSampler(num_steps=args.sample_steps)
+    sampler = FlowMatchingSampler(num_steps=cfg.sample_steps)
 
-    # 断点继续训练
+    # ---- 断点继续训练 ----
     start_epoch = 0
     best_test_loss = float("inf")
     best_epoch = 0
 
     last_model_path = os.path.join(models_dir, "last.model")
-    if args.resume and os.path.exists(last_model_path):
+    if cfg.resume and os.path.exists(last_model_path):
         print(f"Resuming from {last_model_path}...")
         start_epoch, best_test_loss, best_epoch = load_checkpoint(
             last_model_path, model, optimizer, device
@@ -166,18 +180,21 @@ def main():
     # TensorBoard
     writer = SummaryWriter(log_dir=tb_dir)
 
-    # 训练循环
-    print(f"\nStarting training from epoch {start_epoch} to {args.epochs - 1}...")
+    # ---- 训练循环 ----
+    print(f"\nStarting training from epoch {start_epoch} to {cfg.epochs - 1}...")
     print("=" * 60)
 
-    for epoch in range(start_epoch, args.epochs):
+    img_size = cfg.model.img_size
+    in_channels = cfg.model.in_channels
+
+    for epoch in range(start_epoch, cfg.epochs):
         # ---- 训练 ----
         train_loss = train_one_epoch(model, train_loader, optimizer, device)
 
         # ---- 测试 ----
         test_loss = test_one_epoch(model, test_loader, device)
 
-        print(f"Epoch [{epoch:5d}/{args.epochs}]  train_loss={train_loss:.6f}  test_loss={test_loss:.6f}", end="")
+        print(f"Epoch [{epoch:5d}/{cfg.epochs}]  train_loss={train_loss:.6f}  test_loss={test_loss:.6f}", end="")
 
         # ---- 更新 best ----
         is_best = test_loss < best_test_loss
@@ -206,7 +223,7 @@ def main():
 
         # ---- 采样图片 ----
         print(f"  Sampling 16 images...", end="", flush=True)
-        images = sample_images(model, sampler, device, num_images=16)
+        images = sample_images(model, sampler, device, img_size, in_channels, num_images=16)
         grid = make_grid(images, nrow=4, padding=2)
         img_path = os.path.join(images_dir, f"{epoch:05d}.png")
         save_image(grid, img_path)
@@ -214,8 +231,8 @@ def main():
         print(f" saved to {img_path}")
 
         # ---- 保存模型 ----
-        # 每 5 轮保存一次编号模型
-        if epoch % 5 == 0:
+        # 每 25 轮保存一次编号模型
+        if epoch % 25 == 0:
             numbered_path = os.path.join(models_dir, f"{epoch:05d}.model")
             save_checkpoint(numbered_path, model, optimizer, epoch, best_test_loss, best_epoch)
 

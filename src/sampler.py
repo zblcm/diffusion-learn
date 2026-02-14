@@ -26,7 +26,7 @@ class FlowMatchingSampler:
         
         Args:
             model: 预测速度场的模型, 输入 (x_t, t) 输出 v
-            shape: 生成图像的形状, 如 (B, 3, 64, 64)
+            shape: 生成图像的形状, 如 (B, 3, 256, 256)
             device: 设备
             
         Returns:
@@ -57,7 +57,7 @@ class FlowMatchingSampler:
         
         Args:
             model: 预测速度场的模型
-            x1: 真实数据 (B, 3, 64, 64), 值域 [-1, 1]
+            x1: 真实数据 (B, 3, 256, 256), 值域 [-1, 1]
             device: 设备
             
         Returns:

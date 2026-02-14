@@ -1,6 +1,6 @@
 # ZiT 汽车图片生成
 
-基于 **ZiT (Zigzag Transformer)** 架构和 **Flow Matching** 的 64×64 RGB 汽车图片生成项目。
+基于 **ZiT (Zigzag Transformer)** 架构和 **Flow Matching** 的 256×256 RGB 汽车图片生成项目。
 
 ## 项目结构
 
@@ -97,7 +97,7 @@ python src/sample.py --model_path output/models/best.model --num_images 16 --sam
 ## 架构说明
 
 ### ZiT (Zigzag Transformer)
-- **PatchEmbed**: 将 64×64 图像分割为 4×4 的 patch, 得到 16×16=256 个 token
+- **PatchEmbed**: 将 256×256 图像分割为 4×4 的 patch, 得到 16×16=256 个 token
 - **ZigzagReorder**: 对 patch 序列进行 zigzag 排列, 使空间相邻的 patch 在序列中也相邻
 - **MultiHeadSelfAttention**: 8 头自注意力, 从零实现 Q/K/V 投影和注意力计算
 - **FeedForward**: GELU 激活的两层 MLP

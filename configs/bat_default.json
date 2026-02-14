@@ -1,0 +1,25 @@
+{
+  "model": {
+    "model_type": "bat",
+    "img_size": 256,
+    "in_channels": 3,
+    "input_dim": 128,
+    "latent_dim": 512,
+    "latent_len": 512,
+    "depth": 12,
+    "num_heads": 8,
+    "mlp_ratio": 4.0,
+    "dropout": 0.1,
+    "time_embed_dim": 256,
+    "cond_dim": 256
+  },
+  "train_dir": "dataset/train",
+  "test_dir": "dataset/test",
+  "epochs": 500,
+  "batch_size": 32,
+  "lr": 1e-4,
+  "num_workers": 4,
+  "sample_steps": 50,
+  "output_dir": "output",
+  "resume": false
+}

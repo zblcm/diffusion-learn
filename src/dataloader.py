@@ -1,6 +1,6 @@
 """
 数据加载器, 包含缩放、平移、镜像等数据增强.
-从 dataset 文件夹加载 RGB 图片, 输出归一化到 [-1, 1] 的 64x64 tensor.
+从 dataset 文件夹加载 RGB 图片, 输出归一化到 [-1, 1] 的 256x256 tensor.
 """
 
 import os
@@ -14,7 +14,7 @@ class CarImageDataset(Dataset):
 
     EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff"}
 
-    def __init__(self, root_dir, img_size=64, augment=True):
+    def __init__(self, root_dir, img_size=256, augment=True):
         """
         Args:
             root_dir: 图片文件夹路径
@@ -72,7 +72,7 @@ class CarImageDataset(Dataset):
 def create_dataloaders(
     data_dir,
     test_dir,
-    img_size=64,
+    img_size=256,
     batch_size=32,
     num_workers=4,
 ):
