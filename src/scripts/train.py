@@ -24,6 +24,7 @@ import shutil
 import argparse
 import torch
 import torch.optim as optim
+from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid, save_image
 
@@ -65,7 +66,8 @@ def train_one_epoch(model, train_loader, optimizer, device):
     total_loss = 0.0
     num_batches = 0
 
-    for batch in train_loader:
+    pbar = tqdm(train_loader, desc="Train", leave=False)
+    for batch in pbar:
         images = batch.to(device)
         optimizer.zero_grad()
         loss = FlowMatchingSampler.compute_loss(model, images, device)
@@ -76,6 +78,9 @@ def train_one_epoch(model, train_loader, optimizer, device):
 
         total_loss += loss.item()
         num_batches += 1
+        
+        # 实时显示当前 batch 的 loss
+        pbar.set_postfix({"loss": f"{loss.item():.6f}"})
 
     return total_loss / max(num_batches, 1)
 
@@ -87,11 +92,15 @@ def test_one_epoch(model, test_loader, device):
     total_loss = 0.0
     num_batches = 0
 
-    for batch in test_loader:
+    pbar = tqdm(test_loader, desc="Test", leave=False)
+    for batch in pbar:
         images = batch.to(device)
         loss = FlowMatchingSampler.compute_loss(model, images, device)
         total_loss += loss.item()
         num_batches += 1
+        
+        # 实时显示当前 batch 的 loss
+        pbar.set_postfix({"loss": f"{loss.item():.6f}"})
 
     return total_loss / max(num_batches, 1)
 
