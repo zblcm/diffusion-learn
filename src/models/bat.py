@@ -66,11 +66,11 @@ class SinusoidalPositionalEncoding2D(nn.Module):
 class CrossAttentionBlock(nn.Module):
     """带自适应归一化的交叉注意力 block."""
 
-    def __init__(self, q_dim, kv_dim, num_heads, mlp_ratio, dropout, cond_dim):
+    def __init__(self, q_dim, kv_dim, num_heads, mlp_ratio, dropout, cond_dim, skip_q_proj=False):
         super().__init__()
         self.norm_q = AdaRMSNorm(q_dim, cond_dim)
         self.norm_kv = RMSNorm(kv_dim)
-        self.cross_attn = MultiHeadCrossAttention(q_dim, kv_dim, num_heads, dropout)
+        self.cross_attn = MultiHeadCrossAttention(q_dim, kv_dim, num_heads, dropout, skip_q_proj=skip_q_proj)
         self.norm_ffn = AdaRMSNorm(q_dim, cond_dim)
         self.ffn = FeedForward(q_dim, int(q_dim * mlp_ratio), dropout)
 
@@ -98,6 +98,7 @@ class BottleneckBlock(nn.Module):
         cond_dim
     ):
         super().__init__()
+        # encode: Q 来自可学习 latent, 跳过 W_q (latent 直接学习投影后的表示)
         self.encode_cross_attn = CrossAttentionBlock(
             q_dim=latent_dim,
             kv_dim=input_dim,
@@ -105,6 +106,7 @@ class BottleneckBlock(nn.Module):
             mlp_ratio=mlp_ratio,
             dropout=dropout,
             cond_dim=cond_dim,
+            skip_q_proj=True,
         )
         self.self_attn = SelfAttentionBlock(
             embed_dim=latent_dim,

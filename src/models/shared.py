@@ -95,16 +95,23 @@ class MultiHeadSelfAttention(nn.Module):
 
 
 class MultiHeadCrossAttention(nn.Module):
-    """多头交叉注意力, 从零实现. Q 来自一个序列, K/V 来自另一个序列."""
+    """多头交叉注意力, 从零实现. Q 来自一个序列, K/V 来自另一个序列.
 
-    def __init__(self, q_dim, kv_dim, num_heads, dropout=0.0):
+    Args:
+        skip_q_proj: 如果为 True, 跳过 Q 投影矩阵. 适用于 Q 来自可学习参数的场景,
+            因为可学习参数可以直接学习投影后的表示, W_q 是冗余的.
+    """
+
+    def __init__(self, q_dim, kv_dim, num_heads, dropout=0.0, skip_q_proj=False):
         super().__init__()
         assert q_dim % num_heads == 0, "q_dim must be divisible by num_heads"
         self.num_heads = num_heads
         self.head_dim = q_dim // num_heads
         self.scale = self.head_dim ** -0.5
+        self.skip_q_proj = skip_q_proj
 
-        self.W_q = nn.Linear(q_dim, q_dim)
+        if not skip_q_proj:
+            self.W_q = nn.Linear(q_dim, q_dim)
         self.W_k = nn.Linear(kv_dim, q_dim)
         self.W_v = nn.Linear(kv_dim, q_dim)
         self.W_o = nn.Linear(q_dim, q_dim)
@@ -119,7 +126,10 @@ class MultiHeadCrossAttention(nn.Module):
         B, N_q, _ = q_seq.shape
         N_kv = kv_seq.shape[1]
 
-        q = self.W_q(q_seq).reshape(B, N_q, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        if self.skip_q_proj:
+            q = q_seq.reshape(B, N_q, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        else:
+            q = self.W_q(q_seq).reshape(B, N_q, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
         k = self.W_k(kv_seq).reshape(B, N_kv, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
         v = self.W_v(kv_seq).reshape(B, N_kv, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
 
