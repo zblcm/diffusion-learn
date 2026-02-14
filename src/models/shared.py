@@ -85,13 +85,10 @@ class MultiHeadSelfAttention(nn.Module):
         k = self.W_k(x).reshape(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
         v = self.W_v(x).reshape(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
 
-        # 注意力分数: (B, heads, N, N)
-        attn = torch.matmul(q, k.transpose(-2, -1)) * self.scale
-        attn = F.softmax(attn, dim=-1)
-        attn = self.attn_dropout(attn)
+        # 使用 Flash Attention (不会实例化完整 attention matrix, 显存 O(1))
+        dropout_p = self.attn_dropout.p if self.training else 0.0
+        out = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p)
 
-        # 加权求和
-        out = torch.matmul(attn, v)  # (B, heads, N, head_dim)
         out = out.permute(0, 2, 1, 3).reshape(B, N, C)
         out = self.W_o(out)
         return out
@@ -126,12 +123,10 @@ class MultiHeadCrossAttention(nn.Module):
         k = self.W_k(kv_seq).reshape(B, N_kv, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
         v = self.W_v(kv_seq).reshape(B, N_kv, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
 
-        # (B, heads, N_q, N_kv)
-        attn = torch.matmul(q, k.transpose(-2, -1)) * self.scale
-        attn = F.softmax(attn, dim=-1)
-        attn = self.attn_dropout(attn)
+        # 使用 Flash Attention (不会实例化完整 attention matrix, 显存 O(1))
+        dropout_p = self.attn_dropout.p if self.training else 0.0
+        out = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p)
 
-        out = torch.matmul(attn, v)  # (B, heads, N_q, head_dim)
         out = out.permute(0, 2, 1, 3).reshape(B, N_q, -1)
         out = self.W_o(out)
         return out
